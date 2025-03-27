@@ -1,4 +1,5 @@
-use super::{Config, Device, Error, config::*};
+use super::{Config, Configs, Device, Error, config::*};
+use crate::ser::set_bootargs;
 use embedded_hal::digital::OutputPin;
 use embedded_io::{Read, Write};
 use embedded_sdmmc::{
@@ -125,6 +126,7 @@ pub fn load_from_sdcard<
             .ok();
             return Err(());
         }
+        Err(_) => {}
     }
 
     let root_dir = volume_mgr.open_root_dir(volume0).map_err(|_| ())?;
@@ -147,17 +149,6 @@ pub fn load_from_sdcard<
         return Err(());
     };
     writeln!(d.tx, "info: /config.toml: dtb located on {}.", dtb_path).ok();
-    // TODO: apply bootargs to dtb.
-    if is_dtb_format(&mut volume_mgr, dtb) {
-        if let Some(bootargs) = config.configs.bootargs {
-            writeln!(d.tx, "info: /config.toml: bootargs set to `{}`.", bootargs).ok();
-        } else {
-            writeln!(d.tx, "warning: /config.toml: cannot find bootargs on key `configs.bootargs`, using default bootargs in DTB.").ok();
-        }
-    } else {
-        writeln!(d.tx, "warning: /config.toml: bootargs is unused, as `config.opaque` does not include an opaque information file in DTB format.
-        note: /config.toml: `config.bootargs` is set to `console=ttyS0,115200n8 root=/dev/mmcblk0p2 rw rootwait quiet` in the configuration.").ok();
-    }
     // Load `bl808.dtb`.
     let result = load_file_into_memory(&mut volume_mgr, dtb, OPAQUE_ADDRESS, OPAQUE_LENGTH);
     match result {
@@ -182,7 +173,31 @@ pub fn load_from_sdcard<
             .ok();
             return Err(());
         }
+        Err(_) => {}
     }
+    // TODO: apply bootargs to dtb.
+    if let Some(bootargs) = config.configs.bootargs {
+        match set_bootargs(&bootargs) {
+            Ok(()) => {
+                writeln!(d.tx, "info: /config.toml: bootargs set to `{}`.", bootargs).ok();
+            }
+            Err(Error::InvalideMagic(magic)) => {
+                writeln!(d.tx, "warning: /config.toml: bootargs is unused, as `config.opaque` does not include an opaque information file in DTB format.
+        note: /config.toml: `config.bootargs` is set to `console=ttyS0,115200n8 root=/dev/mmcblk0p2 rw rootwait quiet` in the configuration.").ok();
+            }
+            Err(_) => {
+                writeln!(
+                    d.tx,
+                    "error: /config.toml: failed to set bootargs on value `{}`.",
+                    bootargs
+                )
+                .ok();
+            }
+        }
+    } else {
+        writeln!(d.tx, "warning: /config.toml: cannot find bootargs on key `configs.bootargs`, using default bootargs in DTB.").ok();
+    }
+
     Ok(OPAQUE_ADDRESS)
 }
 
