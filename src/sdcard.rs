@@ -5,6 +5,7 @@ use embedded_io::{Read, Write};
 use embedded_sdmmc::{
     BlockDevice, Mode, RawDirectory, RawFile, SdCard, TimeSource, Timestamp, VolumeManager,
 };
+use heapless::String;
 use riscv::delay::McycleDelay;
 
 /// Time source implementation for SD card filesystem.
@@ -76,11 +77,25 @@ pub fn load_from_sdcard<
         return Err(());
     };
 
-    let Ok(config) = picotoml::from_str::<Config>(toml_str) else {
-        writeln!(d.tx, "error: invalid toml format.").ok();
-        return Err(());
+    // let Ok(config) = picotoml::from_str::<Config>(toml_str) else {
+    //     writeln!(d.tx, "error: invalid toml format.").ok();
+    //     return Err(());
+    // };
+
+    let mut bottargs: String<128> = String::new();
+    bottargs.push_str("console=ttyS0,2000000 loglevel=8 earlycon=bflb_uart,mmio32,0x30002000 root=/dev/mmcblk0p2 rootwait rootfstype=ext4");
+    let mut firmware: String<128> = String::new();
+    firmware.push_str("/test/zImage");
+    let mut opaque: String<128> = String::new();
+    opaque.push_str("/test/bl808.dtb");
+    let configs = Configs {
+        firmware: Some(firmware),
+        opaque: Some(opaque),
+        bootargs: Some(bottargs),
     };
 
+    // 构造 Config 实例
+    let config = Config { configs };
     // Load firmware.
     let firmware_path = config.configs.firmware.as_ref().map(|s| s.as_str()).unwrap_or_else(|| {
         writeln!(d.tx, "warning: /config.toml: cannot find firmware path on key `configs.firmware`, using default configuration (/zImage).").ok();
@@ -177,7 +192,15 @@ pub fn load_from_sdcard<
     }
     // TODO: apply bootargs to dtb.
     if let Some(bootargs) = config.configs.bootargs {
-        match set_bootargs(&bootargs) {
+        writeln!(d.tx, "debug: /config.toml: bootargs load start.").ok();
+        let result = set_bootargs(d, &bootargs);
+        writeln!(
+            d.tx,
+            "debug: /config.toml: bootargs `{}` load from dtb.",
+            bootargs
+        )
+        .ok();
+        match result {
             Ok(()) => {
                 writeln!(d.tx, "info: /config.toml: bootargs set to `{}`.", bootargs).ok();
             }
