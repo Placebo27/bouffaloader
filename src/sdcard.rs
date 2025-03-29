@@ -96,55 +96,6 @@ pub fn load_from_sdcard<
 
     // 构造 Config 实例
     let config = Config { configs };
-    // Load firmware.
-    let firmware_path = config.configs.firmware.as_ref().map(|s| s.as_str()).unwrap_or_else(|| {
-        writeln!(d.tx, "warning: /config.toml: cannot find firmware path on key `configs.firmware`, using default configuration (/zImage).").ok();
-        "ZIMAGE"
-    });
-    let (file_dir, file_name) = locate_file_by_path(&mut d.tx, "firmware", firmware_path);
-    let Ok(firmware) = open_file_by_path(&mut volume_mgr, root_dir, file_dir, file_name) else {
-        writeln!(
-            d.tx,
-            "error: /config.toml: file not found for firmware path {}.",
-            firmware_path
-        )
-        .ok();
-        return Err(());
-    };
-    writeln!(
-        d.tx,
-        "info: /config.toml: firmware located on {}.",
-        firmware_path
-    )
-    .ok();
-    let result =
-        load_file_into_memory(&mut volume_mgr, firmware, FIRMWARE_ADDRESS, FIRMWARE_LENGTH);
-    match result {
-        Ok(bytes) => {
-            writeln!(
-                d.tx,
-                "info: load {} success, size = {} bytes",
-                file_name, bytes
-            )
-            .ok();
-        }
-        Err(Error::FileLength(size)) => {
-            writeln!(d.tx, "error: /config.toml: file size for firmware {} is {} bytes, but maximum supported firmware size on the current platform (BL808) is 32,704 KiB.", firmware_path, size).ok();
-            return Err(());
-        }
-        Err(Error::BlockDevice(e)) => {
-            writeln!(
-                d.tx,
-                "error: cannot load file `{}` for underlying block device error: {:?}",
-                file_name, e
-            )
-            .ok();
-            return Err(());
-        }
-        Err(_) => {}
-    }
-
-    let root_dir = volume_mgr.open_root_dir(volume0).map_err(|_| ())?;
 
     // Load device tree blob.
     let Some(opaque) = config.configs.opaque else {
@@ -193,7 +144,7 @@ pub fn load_from_sdcard<
     // TODO: apply bootargs to dtb.
     if let Some(bootargs) = config.configs.bootargs {
         writeln!(d.tx, "debug: /config.toml: bootargs load start.").ok();
-        let result = set_bootargs(d, &bootargs);
+        let result = set_bootargs(&mut d.tx, &bootargs);
         writeln!(
             d.tx,
             "debug: /config.toml: bootargs `{}` load from dtb.",
@@ -219,6 +170,56 @@ pub fn load_from_sdcard<
         }
     } else {
         writeln!(d.tx, "warning: /config.toml: cannot find bootargs on key `configs.bootargs`, using default bootargs in DTB.").ok();
+    }
+
+    let root_dir = volume_mgr.open_root_dir(volume0).map_err(|_| ())?;
+
+    // Load firmware.
+    let firmware_path = config.configs.firmware.as_ref().map(|s| s.as_str()).unwrap_or_else(|| {
+        writeln!(d.tx, "warning: /config.toml: cannot find firmware path on key `configs.firmware`, using default configuration (/zImage).").ok();
+        "ZIMAGE"
+    });
+    let (file_dir, file_name) = locate_file_by_path(&mut d.tx, "firmware", firmware_path);
+    let Ok(firmware) = open_file_by_path(&mut volume_mgr, root_dir, file_dir, file_name) else {
+        writeln!(
+            d.tx,
+            "error: /config.toml: file not found for firmware path {}.",
+            firmware_path
+        )
+        .ok();
+        return Err(());
+    };
+    writeln!(
+        d.tx,
+        "info: /config.toml: firmware located on {}.",
+        firmware_path
+    )
+    .ok();
+    let result =
+        load_file_into_memory(&mut volume_mgr, firmware, FIRMWARE_ADDRESS, FIRMWARE_LENGTH);
+    match result {
+        Ok(bytes) => {
+            writeln!(
+                d.tx,
+                "info: load {} success, size = {} bytes",
+                file_name, bytes
+            )
+            .ok();
+        }
+        Err(Error::FileLength(size)) => {
+            writeln!(d.tx, "error: /config.toml: file size for firmware {} is {} bytes, but maximum supported firmware size on the current platform (BL808) is 32,704 KiB.", firmware_path, size).ok();
+            return Err(());
+        }
+        Err(Error::BlockDevice(e)) => {
+            writeln!(
+                d.tx,
+                "error: cannot load file `{}` for underlying block device error: {:?}",
+                file_name, e
+            )
+            .ok();
+            return Err(());
+        }
+        Err(_) => {}
     }
 
     Ok(OPAQUE_ADDRESS)

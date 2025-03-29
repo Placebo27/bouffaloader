@@ -229,7 +229,7 @@ fn run_cli<
                             Some(bootarg) => {
                                 b.clear();
                                 let _ = b.push_str(bootarg);
-                                match set_bootargs(d, &b) {
+                                match set_bootargs(&mut d.tx, &b) {
                                     Ok(_) => writeln!(d.tx, "Bootargs set to: {:?}", b).ok(),
                                     Err(_) => {
                                         writeln!(d.tx, "Failed to set bootargs on value `{:?}`.", b)
