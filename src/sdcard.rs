@@ -1,8 +1,9 @@
 use super::{Config, Device, Error, config::*, ser::set_bootargs};
+use bouffalo_hal::sdio::{NonSysDmaSdh, Sdh};
 use embedded_hal::digital::OutputPin;
 use embedded_io::{Read, Write};
 use embedded_sdmmc::{
-    BlockDevice, Mode, RawDirectory, RawFile, SdCard, TimeSource, Timestamp, VolumeManager,
+    BlockDevice, Mode, RawDirectory, RawFile, SdCard, TimeSource, Timestamp, VolumeManager, sdcard,
 };
 use riscv::delay::McycleDelay;
 
@@ -18,35 +19,18 @@ impl TimeSource for MyTimeSource {
 
 /// Loads necessary files from SD card into memory.
 pub fn load_from_sdcard<
+    'a,
     W: Write,
     R: Read,
     L: OutputPin,
-    SPI: core::ops::Deref<Target = bouffalo_hal::spi::RegisterBlock>,
     PADS,
-    const I: usize,
+    CH: core::ops::Deref<Target = bouffalo_hal::dma::UntypedChannel<'a>>,
 >(
-    d: &mut Device<W, R, L, SPI, PADS, I>,
+    d: &mut Device<'a, W, R, L, PADS, CH>,
 ) -> Result<usize, ()> {
     // SD card initialization.
-    let sdcard = SdCard::new(&mut d.spi, McycleDelay::new(40_000_000));
-    writeln!(d.tx, "initializing sdcard...").ok();
-    const MAX_RETRY_TIME: usize = 3;
-    let mut retry_time = 0;
-    while sdcard.get_card_type().is_none() {
-        retry_time += 1;
-        if retry_time == MAX_RETRY_TIME {
-            writeln!(d.tx, "error: failed to initialize sdcard.").ok();
-            return Err(());
-        }
-    }
-
-    // Display SD card information.
-    writeln!(
-        d.tx,
-        "sdcard initialized success: size = {:.2} GB",
-        sdcard.num_bytes().unwrap() as f32 / (1024.0 * 1024.0 * 1024.0)
-    )
-    .ok();
+    let sdcard = &mut d.sdh;
+    sdcard.init(&mut d.tx, true);
 
     // Initialize filesystem and open root directory.
     let mut volume_mgr = VolumeManager::new(sdcard, MyTimeSource {});

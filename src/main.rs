@@ -1,7 +1,10 @@
 #![no_std]
 #![no_main]
 
-use bouffalo_hal::{prelude::*, psram::init_psram, spi::Spi, uart::Config as UartConfig};
+use bouffalo_hal::sdio::Sdh;
+use bouffalo_hal::{
+    prelude::*, psram::init_psram, sdio::SdhConfig, spi::Spi, uart::Config as UartConfig,
+};
 use bouffalo_rt::{Clocks, Peripherals, entry};
 use bouffaloader::{Device, DynamicInfo};
 use bouffaloader::{
@@ -42,19 +45,35 @@ fn main(p: Peripherals, c: Clocks) -> ! {
         serial.split()
     };
     let led = p.gpio.io8.into_floating_output();
-    let spi = {
-        let spi_clk = p.gpio.io3.into_spi::<1>();
-        let spi_mosi = p.gpio.io1.into_spi::<1>();
-        let spi_miso = p.gpio.io2.into_spi::<1>();
-        let spi_cs = p.gpio.io0.into_spi::<1>();
-        Spi::new(
-            p.spi1,
-            (spi_clk, spi_mosi, spi_miso, spi_cs),
-            MODE_3,
-            &p.glb,
-        )
+    // let spi = {
+    //     let spi_clk = p.gpio.io3.into_spi::<1>();
+    //     let spi_mosi = p.gpio.io1.into_spi::<1>();
+    //     let spi_miso = p.gpio.io2.into_spi::<1>();
+    //     let spi_cs = p.gpio.io0.into_spi::<1>();
+    //     Spi::new(
+    //         p.spi1,
+    //         (spi_clk, spi_mosi, spi_miso, spi_cs),
+    //         MODE_3,
+    //         &p.glb,
+    //     )
+    // };
+
+    // Sdh gpio init.
+    let sdh = {
+        let sdh_clk = p.gpio.io0.into_sdh();
+        let sdh_cmd = p.gpio.io1.into_sdh();
+        let sdh_d0 = p.gpio.io2.into_sdh();
+        let sdh_d1 = p.gpio.io3.into_sdh();
+        let sdh_d2 = p.gpio.io4.into_sdh();
+        let sdh_d3 = p.gpio.io5.into_sdh();
+        let pads = (sdh_clk, sdh_cmd, sdh_d0, sdh_d1, sdh_d2, sdh_d3);
+        let config = SdhConfig::default();
+        let mut dma0 = p.dma0.split(&p.glb);
+        dma0.ch0.memory_to_memory(rx_config);
+        p.sdh.with_dma(pads, dma0.ch0, config, &p.glb)
     };
-    let mut d = Device { tx, rx, led, spi };
+
+    let mut d = Device { tx, rx, led, sdh };
     let mut bootargs = String::new();
     // Display welcome message.
     writeln!(d.tx, "Welcome to bouffaloader🦀!").ok();

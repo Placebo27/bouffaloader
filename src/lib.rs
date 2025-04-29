@@ -8,6 +8,8 @@ pub mod utils;
 
 pub use error::Error;
 
+use bouffalo_hal::sdio::RegisterBlock;
+use bouffalo_hal::sdio::Sdh;
 use bouffalo_hal::spi::Spi;
 use core::clone::Clone;
 use core::fmt::Debug;
@@ -20,17 +22,17 @@ use serde::Deserialize;
 
 /// Device structure containing all hardware interfaces.
 pub struct Device<
+    'a,
     W: Write,
     R: Read,
     L: OutputPin,
-    SPI: core::ops::Deref<Target = bouffalo_hal::spi::RegisterBlock>,
     PADS,
-    const I: usize,
+    CH: core::ops::Deref<Target = bouffalo_hal::dma::UntypedChannel<'a>>,
 > {
     pub tx: W,
     pub rx: R,
     pub led: L,
-    pub spi: Spi<SPI, PADS, I>,
+    pub sdh: Sdh<'a, PADS, CH>,
 }
 
 /// Configuration settings for bouffaloader.
